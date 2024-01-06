@@ -9,7 +9,7 @@ The application is targeted at a broad range of users, including students, profe
 # Step-by-Step Guide to Run the Application
 1) Running the Golang server:
 
-### go build todo.go
+### `go build todo.go`
 
 2) Setting up and running the client application:
 
