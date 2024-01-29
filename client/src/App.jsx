@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
+import { RxPencil2 } from "react-icons/rx";
+import { RxCross1 } from "react-icons/rx";
+import { RxStarFilled } from "react-icons/rx";
+import { RxStar } from "react-icons/rx";
+import { MdKeyboardArrowLeft } from "react-icons/md";
+import { MdKeyboardArrowRight } from "react-icons/md";
 
 const App = () => {
   const [tasks, setTasks] = useState([]);
@@ -23,7 +29,7 @@ const App = () => {
             page: pagination.page,
             pageSize: pagination.pageSize,
             ...filters,
-            sortOrder: filters.sortOrder, // Include sortOrder directly
+            sortOrder: filters.sortOrder,
           },
         });
 
@@ -34,15 +40,14 @@ const App = () => {
       }
     };
 
-    // Check if pagination has changed before making a request
     if (
         pagination.page !== 1 ||
         pagination.pageSize !== 5 ||
-        tasks.length === 0 // Add this condition to avoid fetching tasks when tasks are already present
+        tasks.length === 0 //
     ) {
       fetchTasks();
     }
-  }, [pagination, tasks]);  // Include tasks in the dependencies array
+  }, [pagination, tasks]);
 
 
   const fetchTasks = async () => {
@@ -52,7 +57,7 @@ const App = () => {
           page: pagination.page,
           pageSize: pagination.pageSize,
           ...filters,
-          sortOrder: filters.sortOrder, // Include sortOrder directly
+          sortOrder: filters.sortOrder,
         },
       });
 
@@ -66,7 +71,6 @@ const App = () => {
   const handleFilterChange = (event) => {
     const { name, value, type } = event.target;
 
-    // Handle different input types (text, checkbox, select, etc.)
     const newValue = type === 'checkbox' ? !filters[name] : value;
 
     setFilters((prevFilters) => ({
@@ -94,7 +98,7 @@ const App = () => {
     setNewTask({ ...newTask, [name]: value });
   };
   const handleEdit = (task) => {
-    setEditingTask(task); // Устанавливаем задачу для редактирования
+    setEditingTask(task);
   };
 
   const handleUpdate = async () => {
@@ -102,7 +106,7 @@ const App = () => {
       const response = await axios.put(`http://localhost:8000/tasks/${editingTask.ID}`, editingTask);
       const updatedTasks = tasks.map((task) => (task.ID === editingTask.ID ? response.data : task));
       setTasks(updatedTasks);
-      setEditingTask(null); // Сбрасываем редактирование
+      setEditingTask(null);
     } catch (error) {
       console.error('Ошибка обновления задачи:', error);
     }
@@ -125,7 +129,7 @@ const App = () => {
   };
 
   const handleCancelEdit = () => {
-    setEditingTask(null); // Отменяем редактирование
+    setEditingTask(null);
   };
 
   const handleToggleStar = async (taskId) => {
@@ -133,7 +137,6 @@ const App = () => {
       const response = await axios.patch(`http://localhost:8000/tasks/${taskId}/toggle-star`);
       const { haveStar, lastUpdated } = response.data;
 
-      // Update tasks state to reflect the star change
       setTasks((prevTasks) =>
           prevTasks.map((task) =>
               task.ID === taskId ? { ...task, star: haveStar, lastUpdated } : task
@@ -146,7 +149,6 @@ const App = () => {
 
 
   const handleFilterApply = () => {
-    // Trigger a fetch with the current filters
     fetchTasks();
   };
 
@@ -188,7 +190,7 @@ const App = () => {
         <h1>Список задач</h1>
 
         {/* Filter controls */}
-        <div>
+        <div className='filtering'>
           <label>
             Name:
             <input type='text' name='name' value={filters.name} onChange={handleFilterChange}/>
@@ -202,29 +204,28 @@ const App = () => {
             <input type='checkbox' name='star' checked={filters.star} onChange={handleFilterChange}/>
           </label>
           <p></p>
-          <button onClick={handleFilterApply}>Применить фильтр</button>
 
           <p></p>
           {/* Sorting controls */}
           <label>
             Sort by:
+            <div className='select-container'>
             <select name='sortField' value={filters.sortField} onChange={(e) => handleSortChange(e.target.value)}>
               <option value=''>None</option>
               <option value='name'>Name</option>
               <option value='details'>Details</option>
               <option value='lastUpdated'>Updated time</option>
-              {/* Add more options based on your task structure */}
             </select>
-
-            <select name='sortOrder' value={filters.sortOrder} onChange={(e) => handleSortOrderChange(e.target.value)}>
+            </div>
+            <select className='sort-order' name='sortOrder' value={filters.sortOrder} onChange={(e) => handleSortOrderChange(e.target.value)}>
               <option value='asc'>По возрастанию</option>
               <option value='desc'>По убыванию</option>
-              {/* Add more options based on your task structure */}
+
             </select>
-
-            <p></p>
-
-            <button onClick={handleFilterApply}>Отсортировать</button>
+            <div class='search-button-container'>
+              <button onClick={handleFilterApply}>Поиск</button>
+            </div>
+            
           </label>
 
           <ul>
@@ -239,22 +240,20 @@ const App = () => {
                         <button className='cancel-btn' onClick={handleCancelEdit}>Отмена</button>
                       </div>
                   ) : (
-                      <div>
-                        <h2>{task.name}</h2>
-                        <p>ID: {task.ID}</p>
-                        <p>{task.details}</p>
-                        <p>Created: {task.createdDate}</p>
-                        <p>Last updated: {task.lastUpdated}</p>
-                        <button onClick={() => handleEdit(task)}>Редактировать</button>
-                        <button className='delete-btn' onClick={() => handleDelete(task.ID)}>Удалить</button>
-                        <button className='star-btn' onClick={() => handleToggleStar(task.ID)}>
-                          {task.star ? 'Убрать звезду' : 'Поставить звезду'}
-                        </button>
-                        {task.star ? (
-                            <span role="img" aria-label="filled-star">⭐️</span>
-                        ) : (
-                            <span role="img" aria-label="empty-star">☆</span>
-                        )}
+                      <div className='edit-section'>
+                        <div className="task-details">
+                          <h2>{task.name}</h2>
+                          <p>{task.details}</p>
+                        </div>
+                        <div className="icon-buttons">
+                          <RxPencil2 className='edit-btn' onClick={() => handleEdit(task)} />
+                          <RxCross1 className='delete-btn' onClick={() => handleDelete(task.ID)} />
+                          {task.star ? (
+                            <RxStarFilled className='star-btn starred' onClick={() => handleToggleStar(task.ID)} />
+                          ) : (
+                            <RxStar className='star-btn' onClick={() => handleToggleStar(task.ID)} />
+                          )}
+                        </div>
                       </div>
                   )}
                 </li>
@@ -262,17 +261,18 @@ const App = () => {
           </ul>
 
           {/* Pagination controls */}
-          <div>
-            <span>Page {pagination.page}</span>
-            <button onClick={() => handlePageChange(pagination.page - 1)} disabled={pagination.page === 1}>
-              Previous Page
-            </button>
-            <button
-                onClick={() => handlePageChange(pagination.page + 1)}
-                disabled={pagination.page === Math.ceil(pagination.total / pagination.pageSize)}
-            >
-              Next Page
-            </button>
+          <div className='pagination'>
+          <MdKeyboardArrowLeft
+            className='arrow-l'
+            onClick={() => handlePageChange(pagination.page - 1)}
+            style={{ visibility: pagination.page === 1 ? 'hidden' : 'visible' }}
+          />
+            <span>{pagination.page}</span>
+            <MdKeyboardArrowRight
+              className='arrow-r'
+              onClick={() => handlePageChange(pagination.page + 1)}
+              disabled={pagination.page === Math.ceil(pagination.total / pagination.pageSize)}
+            />
           </div>
         </div>
       </div>
