@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var limiter = rate.NewLimiter(1, 1) // Rate limit of 1 request
+var limiter = rate.NewLimiter(10, 1) // Rate limit of 1 request
 
 const (
 	dsn = "host=localhost user=postgres password=Infinitive dbname=go-todo-app port=5432 sslmode=disable"
