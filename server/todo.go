@@ -24,7 +24,7 @@ type Task struct {
 	Details     string    `json:"details"`
 	CreatedDate time.Time `json:"createdDate"`
 	HaveStar    bool      `json:"star" gorm:"default:false"`
-	LastUpdated time.Time `json:"lastUpdated"`
+	LastUpdated time.Time `json:"lastUpdated" gorm:"column:lastupdated"`
 }
 
 func (t *Task) ToggleHaveStar() {
@@ -60,12 +60,18 @@ func main() {
 func GetTasks(c *gin.Context) {
 	var tasks []Task
 
-	// Get page, pageSize, and filter parameters from query parameters, with default values
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	nameFilter := c.Query("name")
 	detailsFilter := c.Query("details")
 	starFilter, _ := strconv.ParseBool(c.Query("star"))
+	sortField := c.Query("sortField")
+	sortOrder := c.DefaultQuery("sortOrder", "asc")
+
+	// If sortField is not provided, default to ID
+	if sortField == "" {
+		sortField = "ID"
+	}
 
 	offset := (page - 1) * pageSize
 
@@ -82,6 +88,9 @@ func GetTasks(c *gin.Context) {
 	if starFilter {
 		query = query.Where("have_star = ?", true)
 	}
+
+	orderClause := sortField + " " + sortOrder
+	query = query.Order(orderClause)
 
 	if err := query.Find(&tasks).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения задач"})
