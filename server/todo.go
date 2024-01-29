@@ -1,6 +1,7 @@
 package main
 
 import (
+	"golang.org/x/time/rate"
 	"log"
 	"net/http"
 	"strconv"
@@ -11,6 +12,8 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+var limiter = rate.NewLimiter(1, 1) // Rate limit of 1 request
 
 const (
 	dsn = "host=localhost user=postgres password=Infinitive dbname=go-todo-app port=5432 sslmode=disable"
@@ -30,6 +33,13 @@ type Task struct {
 func (t *Task) ToggleHaveStar() {
 	t.HaveStar = !t.HaveStar
 	t.LastUpdated = time.Now()
+}
+
+func checkLimiter(c *gin.Context) {
+	if !limiter.Allow() {
+		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "Too many requests"})
+		return
+	}
 }
 
 func main() {
@@ -58,6 +68,10 @@ func main() {
 }
 
 func GetTasks(c *gin.Context) {
+	checkLimiter(c)
+	if c.IsAborted() {
+		return
+	}
 	var tasks []Task
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -68,7 +82,6 @@ func GetTasks(c *gin.Context) {
 	sortField := c.Query("sortField")
 	sortOrder := c.DefaultQuery("sortOrder", "asc")
 
-	// If sortField is not provided, default to ID
 	if sortField == "" {
 		sortField = "ID"
 	}
@@ -101,6 +114,10 @@ func GetTasks(c *gin.Context) {
 }
 
 func GetTask(c *gin.Context) {
+	checkLimiter(c)
+	if c.IsAborted() {
+		return
+	}
 	var task Task
 	id := c.Param("id")
 	if err := db.First(&task, id).Error; err != nil {
@@ -112,6 +129,10 @@ func GetTask(c *gin.Context) {
 }
 
 func CreateTask(c *gin.Context) {
+	checkLimiter(c)
+	if c.IsAborted() {
+		return
+	}
 	var newTask Task
 	if err := c.BindJSON(&newTask); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Ошибка входных данных"})
@@ -131,6 +152,10 @@ func CreateTask(c *gin.Context) {
 }
 
 func UpdateTask(c *gin.Context) {
+	checkLimiter(c)
+	if c.IsAborted() {
+		return
+	}
 	var updatedTask Task
 	id := c.Param("id")
 
@@ -144,7 +169,6 @@ func UpdateTask(c *gin.Context) {
 		return
 	}
 
-	// Обновляем поле lastUpdated
 	updatedTask.LastUpdated = time.Now()
 
 	if err := db.Save(&updatedTask).Error; err != nil {
@@ -156,6 +180,10 @@ func UpdateTask(c *gin.Context) {
 }
 
 func DeleteTask(c *gin.Context) {
+	checkLimiter(c)
+	if c.IsAborted() {
+		return
+	}
 	var task Task
 	id := c.Param("id")
 
@@ -173,6 +201,10 @@ func DeleteTask(c *gin.Context) {
 }
 
 func ToggleStarTask(c *gin.Context) {
+	checkLimiter(c)
+	if c.IsAborted() {
+		return
+	}
 	var task Task
 	id := c.Param("id")
 
@@ -181,7 +213,6 @@ func ToggleStarTask(c *gin.Context) {
 		return
 	}
 
-	// Изменяем значение haveStar и обновляем lastUpdated
 	task.ToggleHaveStar()
 
 	if err := db.Save(&task).Error; err != nil {
