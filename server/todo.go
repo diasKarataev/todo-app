@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -17,9 +19,17 @@ const (
 var db *gorm.DB
 
 type Task struct {
-	ID      uint   `gorm:"primaryKey"`
-	Name    string `json:"name"`
-	Details string `json:"details"`
+	ID          uint      `gorm:"primaryKey"`
+	Name        string    `json:"name"`
+	Details     string    `json:"details"`
+	CreatedDate time.Time `json:"createdDate"`
+	HaveStar    bool      `json:"star" gorm:"default:false"`
+	LastUpdated time.Time `json:"lastUpdated"`
+}
+
+func (t *Task) ToggleHaveStar() {
+	t.HaveStar = !t.HaveStar
+	t.LastUpdated = time.Now()
 }
 
 func main() {
@@ -41,6 +51,7 @@ func main() {
 	r.POST("/tasks", CreateTask)
 	r.PUT("/tasks/:id", UpdateTask)
 	r.DELETE("/tasks/:id", DeleteTask)
+	r.PATCH("/tasks/:id/toggle-star", ToggleStarTask)
 
 	log.Println("Сервер запущен на порту :8000")
 	log.Fatal(http.ListenAndServe(":8000", r))
@@ -48,7 +59,15 @@ func main() {
 
 func GetTasks(c *gin.Context) {
 	var tasks []Task
-	if err := db.Find(&tasks).Error; err != nil {
+
+	// Get page and pageSize from query parameters, with default values
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+
+	// Calculate offset based on page and pageSize
+	offset := (page - 1) * pageSize
+
+	if err := db.Offset(offset).Limit(pageSize).Find(&tasks).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения задач"})
 		return
 	}
@@ -74,6 +93,10 @@ func CreateTask(c *gin.Context) {
 		return
 	}
 
+	newTask.CreatedDate = time.Now()
+	newTask.LastUpdated = newTask.CreatedDate
+	newTask.HaveStar = false
+
 	if err := db.Create(&newTask).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка создания задачи"})
 		return
@@ -95,6 +118,9 @@ func UpdateTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Ошибка входных данных"})
 		return
 	}
+
+	// Обновляем поле lastUpdated
+	updatedTask.LastUpdated = time.Now()
 
 	if err := db.Save(&updatedTask).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка обновления задачи"})
@@ -119,4 +145,24 @@ func DeleteTask(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Задача успешно удалена"})
+}
+
+func ToggleStarTask(c *gin.Context) {
+	var task Task
+	id := c.Param("id")
+
+	if err := db.First(&task, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Задача не найдена"})
+		return
+	}
+
+	// Изменяем значение haveStar и обновляем lastUpdated
+	task.ToggleHaveStar()
+
+	if err := db.Save(&task).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка обновления задачи"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"haveStar": task.HaveStar, "lastUpdated": task.LastUpdated})
 }
