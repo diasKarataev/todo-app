@@ -7,7 +7,7 @@ The main goal of the project is to provide a simple, intuitive interface for eff
 
 The application is targeted at a broad range of users, including students, professionals, entrepreneurs, and anyone seeking to organize their daily tasks and projects effectively.
 
-![image_2024-01-06_22-48-05](https://github.com/diasKarataev/todo-app/assets/123745326/c3e4a5af-7d0e-4a65-bc65-24862acadf7a)
+![image](https://github.com/diasKarataev/todo-app/assets/123745326/dc27da70-5eed-46d5-902f-cbba6d2aaa8f)
 
 # Made by:
 Karataev Dias
