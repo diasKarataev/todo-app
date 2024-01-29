@@ -60,14 +60,30 @@ func main() {
 func GetTasks(c *gin.Context) {
 	var tasks []Task
 
-	// Get page and pageSize from query parameters, with default values
+	// Get page, pageSize, and filter parameters from query parameters, with default values
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	nameFilter := c.Query("name")
+	detailsFilter := c.Query("details")
+	starFilter, _ := strconv.ParseBool(c.Query("star"))
 
-	// Calculate offset based on page and pageSize
 	offset := (page - 1) * pageSize
 
-	if err := db.Offset(offset).Limit(pageSize).Find(&tasks).Error; err != nil {
+	query := db.Offset(offset).Limit(pageSize)
+
+	if nameFilter != "" {
+		query = query.Where("name LIKE ?", "%"+nameFilter+"%")
+	}
+
+	if detailsFilter != "" {
+		query = query.Where("details LIKE ?", "%"+detailsFilter+"%")
+	}
+
+	if starFilter {
+		query = query.Where("have_star = ?", true)
+	}
+
+	if err := query.Find(&tasks).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения задач"})
 		return
 	}
