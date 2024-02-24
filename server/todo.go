@@ -17,11 +17,11 @@ import (
 var limiter = rate.NewLimiter(10, 1) // Rate limit of 1 request
 
 const (
-	dsn = "host=localhost user=postgres password=Infinitive dbname=go-todo-app port=5432 sslmode=disable"
+	dsn = "host=localhost user=postgres password=91926499 dbname=go-todo-app port=5432 sslmode=disable"
 )
 
 var db *gorm.DB
-var log *logrus.Logger
+var logger *logrus.Logger
 
 type Task struct {
 	ID          uint      `gorm:"primaryKey"`
@@ -45,27 +45,27 @@ func checkLimiter(c *gin.Context) {
 }
 
 func main() {
-	log = logrus.New()
+	logger = logrus.New()
 	var err error
-	log.SetFormatter(&logrus.JSONFormatter{})
+	logger.SetFormatter(&logrus.JSONFormatter{})
 
-	file, err := os.OpenFile("logfile.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	file, err := os.OpenFile("logfile.logger", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err == nil {
-		log.SetOutput(file)
-		log.Info("Log file opened successfully")
+		logger.SetOutput(file)
+		logger.Info("Log file opened successfully")
 	} else {
-		log.WithError(err).Fatal("Failed to open log file")
+		logger.WithError(err).Fatal("Failed to open logger file")
 	}
 	defer file.Close()
 
-	log.WithFields(logrus.Fields{
+	logger.WithFields(logrus.Fields{
 		"action": "start",
 		"status": "success",
 	}).Info("Application started successfully")
 
 	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	db.AutoMigrate(&Task{})
 
@@ -82,8 +82,8 @@ func main() {
 	r.DELETE("/tasks/:id", DeleteTask)
 	r.PATCH("/tasks/:id/toggle-star", ToggleStarTask)
 
-	log.Println("Сервер запущен на порту :8000")
-	log.Fatal(http.ListenAndServe(":8000", r))
+	logger.Println("Сервер запущен на порту :8000")
+	logger.Fatal(http.ListenAndServe(":8000", r))
 }
 
 func GetTasks(c *gin.Context) {
@@ -128,7 +128,7 @@ func GetTasks(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения задач"})
 		return
 	}
-	log.WithFields(logrus.Fields{
+	logger.WithFields(logrus.Fields{
 		"action":     "getTasks",
 		"page":       page,
 		"pageSize":   pageSize,
@@ -152,7 +152,7 @@ func GetTask(c *gin.Context) {
 		return
 	}
 
-	log.WithFields(logrus.Fields{
+	logger.WithFields(logrus.Fields{
 		"action": "getTasks",
 	}).Info("GetTask executed successfully")
 
@@ -166,7 +166,7 @@ func CreateTask(c *gin.Context) {
 	}
 	var newTask Task
 	if err := c.BindJSON(&newTask); err != nil {
-		log.WithFields(logrus.Fields{
+		logger.WithFields(logrus.Fields{
 			"action": "createTask",
 			"error":  err.Error(),
 		}).Error("Error binding JSON for creating task")
@@ -179,7 +179,7 @@ func CreateTask(c *gin.Context) {
 	newTask.HaveStar = false
 
 	if err := db.Create(&newTask).Error; err != nil {
-		log.WithFields(logrus.Fields{
+		logger.WithFields(logrus.Fields{
 			"action": "createTask",
 			"error":  err.Error(),
 		}).Error("Error creating task in the database")
@@ -187,7 +187,7 @@ func CreateTask(c *gin.Context) {
 		return
 	}
 
-	log.WithFields(logrus.Fields{
+	logger.WithFields(logrus.Fields{
 		"action": "createTask",
 		"taskID": newTask.ID,
 	}).Info("Task created successfully")
@@ -204,7 +204,7 @@ func UpdateTask(c *gin.Context) {
 	id := c.Param("id")
 
 	if err := db.First(&updatedTask, id).Error; err != nil {
-		log.WithFields(logrus.Fields{
+		logger.WithFields(logrus.Fields{
 			"action": "updateTask",
 			"error":  err.Error(),
 		}).Error("Error retrieving task for update")
@@ -213,7 +213,7 @@ func UpdateTask(c *gin.Context) {
 	}
 
 	if err := c.BindJSON(&updatedTask); err != nil {
-		log.WithFields(logrus.Fields{
+		logger.WithFields(logrus.Fields{
 			"action": "updateTask",
 			"error":  err.Error(),
 		}).Error("Error binding JSON for updating task")
@@ -224,7 +224,7 @@ func UpdateTask(c *gin.Context) {
 	updatedTask.LastUpdated = time.Now()
 
 	if err := db.Save(&updatedTask).Error; err != nil {
-		log.WithFields(logrus.Fields{
+		logger.WithFields(logrus.Fields{
 			"action": "updateTask",
 			"error":  err.Error(),
 		}).Error("Error updating task in the database")
@@ -232,7 +232,7 @@ func UpdateTask(c *gin.Context) {
 		return
 	}
 
-	log.WithFields(logrus.Fields{
+	logger.WithFields(logrus.Fields{
 		"action": "updateTask",
 		"taskID": updatedTask.ID,
 	}).Info("Task updated successfully")
@@ -249,7 +249,7 @@ func DeleteTask(c *gin.Context) {
 	id := c.Param("id")
 
 	if err := db.First(&task, id).Error; err != nil {
-		log.WithFields(logrus.Fields{
+		logger.WithFields(logrus.Fields{
 			"action": "deleteTask",
 			"error":  err.Error(),
 		}).Error("Error retrieving task for delete")
@@ -258,7 +258,7 @@ func DeleteTask(c *gin.Context) {
 	}
 
 	if err := db.Delete(&task).Error; err != nil {
-		log.WithFields(logrus.Fields{
+		logger.WithFields(logrus.Fields{
 			"action": "deleteTask",
 			"error":  err.Error(),
 		}).Error("Error deleting task from the database")
@@ -266,7 +266,7 @@ func DeleteTask(c *gin.Context) {
 		return
 	}
 
-	log.WithFields(logrus.Fields{
+	logger.WithFields(logrus.Fields{
 		"action": "deleteTask",
 		"taskID": task.ID,
 	}).Info("Task deleted successfully")
@@ -283,7 +283,7 @@ func ToggleStarTask(c *gin.Context) {
 	id := c.Param("id")
 
 	if err := db.First(&task, id).Error; err != nil {
-		log.WithFields(logrus.Fields{
+		logger.WithFields(logrus.Fields{
 			"action": "toggleStarTask",
 			"error":  err.Error(),
 		}).Error("Error retrieving task for toggle star")
@@ -294,7 +294,7 @@ func ToggleStarTask(c *gin.Context) {
 	task.ToggleHaveStar()
 
 	if err := db.Save(&task).Error; err != nil {
-		log.WithFields(logrus.Fields{
+		logger.WithFields(logrus.Fields{
 			"action": "toggleStarTask",
 			"error":  err.Error(),
 		}).Error("Error updating task for toggle star")
@@ -302,7 +302,7 @@ func ToggleStarTask(c *gin.Context) {
 		return
 	}
 
-	log.WithFields(logrus.Fields{
+	logger.WithFields(logrus.Fields{
 		"action":      "toggleStarTask",
 		"taskID":      task.ID,
 		"haveStar":    task.HaveStar,
