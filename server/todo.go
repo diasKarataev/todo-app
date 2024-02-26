@@ -34,12 +34,13 @@ const (
 )
 
 type Task struct {
-	ID          uint      `gorm:"primaryKey"`
+	ID          uuid.UUID `gorm:"primaryKey"`
 	Name        string    `json:"name"`
 	Details     string    `json:"details"`
 	CreatedDate time.Time `json:"createdDate"`
 	HaveStar    bool      `json:"star" gorm:"default:false"`
 	LastUpdated time.Time `json:"lastUpdated" gorm:"column:lastupdated"`
+	UserId      uint      `json:"userId"`
 }
 
 type User struct {
@@ -336,6 +337,24 @@ func GetTasks(c *gin.Context) {
 	}
 	var tasks []Task
 
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
+		return
+	}
+	tokenString := authHeader[len("Bearer "):]
+
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+	if err != nil || !token.Valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	userId := claims.UserId
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	nameFilter := c.Query("name")
@@ -350,7 +369,7 @@ func GetTasks(c *gin.Context) {
 
 	offset := (page - 1) * pageSize
 
-	query := db.Offset(offset).Limit(pageSize)
+	query := db.Offset(offset).Limit(pageSize).Where("user_id = ?", userId)
 
 	if nameFilter != "" {
 		query = query.Where("name LIKE ?", "%"+nameFilter+"%")
@@ -379,7 +398,6 @@ func GetTasks(c *gin.Context) {
 	}).Info("GetTasks executed successfully")
 
 	c.JSON(http.StatusOK, tasks)
-
 }
 
 func GetTask(c *gin.Context) {
@@ -443,9 +461,26 @@ func CreateTask(c *gin.Context) {
 		return
 	}
 
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
+		return
+	}
+	tokenString := authHeader[len("Bearer "):]
+
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+	if err != nil || !token.Valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+	newTask.ID = uuid.New()
 	newTask.CreatedDate = time.Now()
 	newTask.LastUpdated = newTask.CreatedDate
 	newTask.HaveStar = false
+	newTask.UserId = claims.UserId // Назначить userId в поле newTask.UserId
 
 	if err := db.Create(&newTask).Error; err != nil {
 		log.WithFields(logrus.Fields{
@@ -472,7 +507,17 @@ func UpdateTask(c *gin.Context) {
 	var updatedTask Task
 	id := c.Param("id")
 
-	if err := db.First(&updatedTask, id).Error; err != nil {
+	taskID, err := uuid.Parse(id)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"action": "updateTask",
+			"error":  err.Error(),
+		}).Error("Error parsing task ID")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный идентификатор задачи"})
+		return
+	}
+
+	if err := db.First(&updatedTask, taskID).Error; err != nil {
 		log.WithFields(logrus.Fields{
 			"action": "updateTask",
 			"error":  err.Error(),
@@ -517,7 +562,18 @@ func DeleteTask(c *gin.Context) {
 	var task Task
 	id := c.Param("id")
 
-	if err := db.First(&task, id).Error; err != nil {
+	// Преобразовать id в uuid.UUID
+	taskID, err := uuid.Parse(id)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"action": "deleteTask",
+			"error":  err.Error(),
+		}).Error("Error parsing task ID")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный идентификатор задачи"})
+		return
+	}
+
+	if err := db.First(&task, taskID).Error; err != nil {
 		log.WithFields(logrus.Fields{
 			"action": "deleteTask",
 			"error":  err.Error(),
