@@ -1,2 +1,5 @@
 .idea/
 logfile.log
+.env
+logfile.logger
+todo.exe
