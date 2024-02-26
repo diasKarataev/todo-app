@@ -5,14 +5,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="dfc911de-1192-4672-968e-8265449cc3cb" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.env" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../server/Dockerfile" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/App.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/App.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/Login.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/Login.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/Navbar.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/Navbar.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/Signup.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/Signup.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/pages/Home.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/pages/Home.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../server/todo.go" beforeDir="false" afterPath="$PROJECT_DIR$/../server/todo.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -69,7 +65,7 @@
       <option name="presentableId" value="Default" />
       <updated>1704555273373</updated>
       <workItem from="1704555276185" duration="851000" />
-      <workItem from="1708964773440" duration="6422000" />
+      <workItem from="1708964773440" duration="7040000" />
     </task>
     <servers />
   </component>
