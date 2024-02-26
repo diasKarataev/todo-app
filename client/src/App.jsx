@@ -1,20 +1,22 @@
-import React from 'react';
-import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+import React, {useEffect, useState} from 'react';
+import { BrowserRouter as Router, Route, Routes, Navigate } from "react-router-dom";
 import './App.css';
 import Home from './pages/Home';
 import Login from './components/Login';
 import Signup from './components/Signup';
 
 const App = () => {
-  return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Home/>} />
-        <Route path='/login' element={<Login/>} />
-        <Route path='signup' element={<Signup/>} />
-      </Routes>
-    </Router>
-  );
+    const token = localStorage.getItem('token');
+
+    return (
+        <Router>
+            <Routes>
+                <Route path="/" element={token ? <Home /> : <Navigate to="/login" />} />
+                <Route path="/login" element={!token ? <Login /> : <Navigate to="/" />} />
+                <Route path="/signup" element={!token ? <Signup /> : <Navigate to="/" />} />
+            </Routes>
+        </Router>
+    );
 };
 
 export default App;

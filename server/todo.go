@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	limiter        = rate.NewLimiter(10, 1) // Rate limit of 1 request
+	limiter        = rate.NewLimiter(300, 1) // Rate limit of 1 request
 	db             *gorm.DB
 	log            *logrus.Logger
 	jwtSecret      = []byte(os.Getenv("JWT_SECRET"))
@@ -117,25 +117,27 @@ func main() {
 	// CORS middleware
 	config := cors.DefaultConfig()
 	config.AllowOrigins = []string{"http://localhost:3000"}
+	config.AllowMethods = []string{"GET", "PATCH", "POST", "PUT", "DELETE", "OPTIONS"}                                                   // Разрешить все методы
+	config.AllowHeaders = []string{"Origin", "Authorization", "Content-Type", "Access-Control-Allow-Headers", "Accept, Accept-Language"} // Разрешить определенные заголовки
 	r.Use(cors.New(config))
 
 	// Public routes
 	r.POST("/register", Register)
 	r.POST("/login", Login)
 	r.GET("/activate/:activationLink", Activate)
-
+	r.GET("/resend-activation-link", ResendActivationLink)
 	// Auth middleware
 	auth := r.Group("/api")
 	auth.Use(AuthMiddleware())
 	{
-		r.GET("/resend-activation-link", ResendActivationLink)
+
 		auth.GET("/user-info", UserInfo)
 		auth.GET("/tasks", GetTasks)
 		auth.GET("/tasks/:id", GetTask)
 		auth.POST("/tasks", CreateTask)
 		auth.PUT("/tasks/:id", UpdateTask)
 		auth.DELETE("/tasks/:id", DeleteTask)
-		auth.PATCH("/tasks/:id/toggle-star", ToggleStarTask)
+		auth.PUT("/tasks/:id/toggle-star", ToggleStarTask)
 	}
 
 	// Start server
@@ -605,9 +607,20 @@ func ToggleStarTask(c *gin.Context) {
 		return
 	}
 	var task Task
+	var taskID uuid.UUID // Объявление переменной taskID типа uuid.UUID
 	id := c.Param("id")
+	taskID, err := uuid.Parse(id) // Преобразование строки id в тип uuid.UUID
 
-	if err := db.First(&task, id).Error; err != nil {
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"action": "toggleStarTask",
+			"error":  err.Error(),
+		}).Error("Error parsing task ID")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат идентификатора задачи"})
+		return
+	}
+
+	if err := db.First(&task, "id = ?", taskID).Error; err != nil {
 		log.WithFields(logrus.Fields{
 			"action": "toggleStarTask",
 			"error":  err.Error(),

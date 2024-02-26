@@ -7,6 +7,7 @@ import { RxStarFilled } from "react-icons/rx";
 import { RxStar } from "react-icons/rx";
 import { MdKeyboardArrowLeft } from "react-icons/md";
 import { MdKeyboardArrowRight } from "react-icons/md";
+import Navbar from "../components/Navbar";
 
 const Home = () => {
   const [tasks, setTasks] = useState([]);
@@ -20,44 +21,44 @@ const Home = () => {
     sortField: '',
     sortOrder: 'asc',
   });
+  const [isAccountActivated, setIsAccountActivated] = useState(false);
+
+  const getToken = () => {
+    return localStorage.getItem('token');
+  };
 
   useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        const response = await axios.get('http://localhost:8000/tasks', {
-          params: {
-            page: pagination.page,
-            pageSize: pagination.pageSize,
-            ...filters,
-            sortOrder: filters.sortOrder,
-          },
-        });
-
-        setTasks(response.data);
-        setPagination((prev) => ({ ...prev, total: response.headers['x-total-count'] }));
-      } catch (error) {
-        console.error('Ошибка получения задач:', error);
-      }
-    };
-
-    if (
-        pagination.page !== 1 ||
-        pagination.pageSize !== 5 ||
-        tasks.length === 0 //
-    ) {
+    if (pagination.page !== 1 || tasks.length === 0) {
       fetchTasks();
     }
-  }, [pagination, tasks]);
+    fetchUserInfo();
+  }, [pagination.page]);
 
+
+  const fetchUserInfo = async () => {
+    try {
+      const response = await axios.get('http://localhost:8000/api/user-info', {
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+        },
+      });
+      setIsAccountActivated(response.data.isActivated);
+    } catch (error) {
+      console.error('Ошибка получения информации о пользователе:', error);
+    }
+  };
 
   const fetchTasks = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/tasks', {
+      const response = await axios.get('http://localhost:8000/api/tasks', {
         params: {
           page: pagination.page,
           pageSize: pagination.pageSize,
           ...filters,
           sortOrder: filters.sortOrder,
+        },
+        headers: {
+          Authorization: `Bearer ${getToken()}`, // Добавление токена к заголовкам запроса
         },
       });
 
@@ -103,7 +104,12 @@ const Home = () => {
 
   const handleUpdate = async () => {
     try {
-      const response = await axios.put(`http://localhost:8000/tasks/${editingTask.ID}`, editingTask);
+      const response = await axios.put(`http://localhost:8000/api/tasks/${editingTask.ID}`, editingTask, {
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+          'Content-Type': 'application/json',
+        },
+      });
       const updatedTasks = tasks.map((task) => (task.ID === editingTask.ID ? response.data : task));
       setTasks(updatedTasks);
       setEditingTask(null);
@@ -111,12 +117,17 @@ const Home = () => {
       console.error('Ошибка обновления задачи:', error);
     }
   };
-  
+
   const handleSubmit = async (event) => {
     event.preventDefault();
 
     try {
-      const response = await axios.post('http://localhost:8000/tasks', newTask);
+      const response = await axios.post('http://localhost:8000/api/tasks', newTask, {
+        headers: {
+          Authorization: `Bearer ${getToken()}`, // Добавление токена к заголовкам запроса
+          'Content-Type': 'application/json', // Указание типа содержимого для запроса
+        },
+      });
       setTasks([...tasks, response.data]);
       setNewTask({ name: '', details: '' });
     } catch (error) {
@@ -135,7 +146,12 @@ const Home = () => {
 
   const handleToggleStar = async (taskId) => {
     try {
-      const response = await axios.patch(`http://localhost:8000/tasks/${taskId}/toggle-star`);
+      const response = await axios.put(`http://localhost:8000/api/tasks/${taskId}/toggle-star`, null, {
+        headers: {
+          Authorization: `Bearer ${getToken()}`, // Добавление токена к заголовкам запроса
+          'Content-Type': 'application/json', // Указание типа содержимого для запроса
+        },
+      });
       const { haveStar, lastUpdated } = response.data;
 
       setTasks((prevTasks) =>
@@ -155,7 +171,11 @@ const Home = () => {
 
   const handleDelete = async (taskId) => {
     try {
-      await axios.delete(`http://localhost:8000/tasks/${taskId}`);
+      await axios.delete(`http://localhost:8000/api/tasks/${taskId}`, {
+        headers: {
+          Authorization: `Bearer ${getToken()}`, // Добавление токена к заголовкам запроса
+        },
+      });
       const updatedTasks = tasks.filter((task) => task.ID !== taskId);
       setTasks(updatedTasks);
     } catch (error) {
@@ -168,25 +188,34 @@ const Home = () => {
   };
 
   return (
+      <>
+        <Navbar></Navbar>
       <div className='container'>
-        <h1>Добавить задачу</h1>
-        <form onSubmit={handleSubmit}>
-          <input
-              type="text"
-              name="name"
-              placeholder="Название задачи"
-              value={newTask.name}
-              onChange={handleInputChange}
-          />
-          <input
-              type="text"
-              name="details"
-              placeholder="Детали"
-              value={newTask.details}
-              onChange={handleInputChange}
-          />
-          <button type="submit">Добавить задачу</button>
-        </form>
+        {isAccountActivated ? (
+            <>
+            <h1>Добавить задачу</h1>
+            <form onSubmit={handleSubmit}>
+              <input
+                  type="text"
+                  name="name"
+                  placeholder="Название задачи"
+                  value={newTask.name}
+                  onChange={handleInputChange}
+              />
+              <input
+                  type="text"
+                  name="details"
+                  placeholder="Детали"
+                  value={newTask.details}
+                  onChange={handleInputChange}
+              />
+              <button type="submit">Добавить задачу</button>
+            </form>
+            </>
+        ) : (
+            <h1 style={{color: "red"}}>Чтобы добавить задачу активируйте аккаунт</h1>
+        )}
+
 
         <h1>Список задач</h1>
 
@@ -277,6 +306,7 @@ const Home = () => {
           </div>
         </div>
       </div>
+      </>
   );
 };
 
