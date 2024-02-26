@@ -116,7 +116,7 @@ func main() {
 
 	// CORS middleware
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:3000"}
+	config.AllowOrigins = []string{os.Getenv("CLIENT_URL")}
 	config.AllowMethods = []string{"GET", "PATCH", "POST", "PUT", "DELETE", "OPTIONS"}                                                   // Разрешить все методы
 	config.AllowHeaders = []string{"Origin", "Authorization", "Content-Type", "Access-Control-Allow-Headers", "Accept, Accept-Language"} // Разрешить определенные заголовки
 	r.Use(cors.New(config))
