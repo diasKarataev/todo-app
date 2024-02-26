@@ -2,26 +2,31 @@ package main
 
 import (
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/time/rate"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
-var limiter = rate.NewLimiter(10, 1) // Rate limit of 1 request
+var (
+	limiter        = rate.NewLimiter(10, 1) // Rate limit of 1 request
+	db             *gorm.DB
+	log            *logrus.Logger
+	jwtSecret      = []byte("pipopipipo")
+	tokenExpiresIn = time.Hour * 24
+)
 
 const (
 	dsn = "host=localhost user=postgres password=Infinitive dbname=go-todo-app port=5432 sslmode=disable"
 )
-
-var db *gorm.DB
-var log *logrus.Logger
 
 type Task struct {
 	ID          uint      `gorm:"primaryKey"`
@@ -30,6 +35,27 @@ type Task struct {
 	CreatedDate time.Time `json:"createdDate"`
 	HaveStar    bool      `json:"star" gorm:"default:false"`
 	LastUpdated time.Time `json:"lastUpdated" gorm:"column:lastupdated"`
+}
+
+type User struct {
+	ID       uint   `gorm:"primaryKey"`
+	Username string `gorm:"uniqueIndex"`
+	Email    string `gorm:"uniqueIndex"`
+	Password string
+}
+
+type Claims struct {
+	Username string `json:"username"`
+	jwt.StandardClaims
+}
+
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type TokenResponse struct {
+	Token string `json:"token"`
 }
 
 func (t *Task) ToggleHaveStar() {
@@ -68,22 +94,138 @@ func main() {
 		log.Fatal(err)
 	}
 	db.AutoMigrate(&Task{})
+	db.AutoMigrate(&User{})
 
 	r := gin.Default()
 
+	// CORS middleware
 	config := cors.DefaultConfig()
 	config.AllowOrigins = []string{"http://localhost:3000"}
 	r.Use(cors.New(config))
 
-	r.GET("/tasks", GetTasks)
-	r.GET("/tasks/:id", GetTask)
-	r.POST("/tasks", CreateTask)
-	r.PUT("/tasks/:id", UpdateTask)
-	r.DELETE("/tasks/:id", DeleteTask)
-	r.PATCH("/tasks/:id/toggle-star", ToggleStarTask)
+	// Public routes
+	r.POST("/register", Register)
+	r.POST("/login", Login)
 
+	// Auth middleware
+	auth := r.Group("/api")
+	auth.Use(AuthMiddleware())
+	{
+		auth.GET("/tasks", GetTasks)
+		auth.GET("/tasks/:id", GetTask)
+		auth.POST("/tasks", CreateTask)
+		auth.PUT("/tasks/:id", UpdateTask)
+		auth.DELETE("/tasks/:id", DeleteTask)
+		auth.PATCH("/tasks/:id/toggle-star", ToggleStarTask)
+	}
+
+	// Start server
 	log.Println("Сервер запущен на порту :8000")
 	log.Fatal(http.ListenAndServe(":8000", r))
+}
+
+func Register(c *gin.Context) {
+	var user User
+	if err := c.ShouldBindJSON(&user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	// Проверяем, что имя пользователя указано
+	if user.Username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username is required"})
+		return
+	}
+
+	// Проверка наличия email в базе данных
+	var existingEmailUser User
+	if err := db.Where("email = ?", user.Email).First(&existingEmailUser).Error; err == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Email already exists"})
+		return
+	}
+
+	// Проверка наличия username в базе данных
+	var existingUsernameUser User
+	if err := db.Where("username = ?", user.Username).First(&existingUsernameUser).Error; err == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	user.Password = string(hashedPassword)
+	if err := db.Create(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		return
+	}
+
+	c.Status(http.StatusCreated)
+}
+
+func Login(c *gin.Context) {
+	var loginRequest LoginRequest
+	if err := c.ShouldBindJSON(&loginRequest); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	var user User
+	if err := db.Where("email = ?", loginRequest.Email).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginRequest.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	token, err := GenerateToken(user.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, TokenResponse{Token: token})
+}
+
+func GenerateToken(username string) (string, error) {
+	expirationTime := time.Now().Add(tokenExpiresIn)
+	claims := &Claims{
+		Username: username,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(jwtSecret)
+}
+
+func AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
+			return
+		}
+
+		tokenString := authHeader[len("Bearer "):]
+		claims := &Claims{}
+
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			return jwtSecret, nil
+		})
+		if err != nil || !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		c.Next()
+	}
 }
 
 func GetTasks(c *gin.Context) {
