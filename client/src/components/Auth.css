@@ -1,0 +1,76 @@
+:root {
+  --main-color: #788cde;
+  --text-color: #fcfcfc;
+  --secondary-color: #6881e6;
+  --bg1-color: #1c1c1c;
+  --bg2-color: #2a2a2a;
+  --bg3-color: #222222;
+  --bg2hover-color: #373737;
+}
+
+.auth-container {
+  background-color: var(--bg2-color);
+  color: var(--text-color);
+  padding: 20px;
+  border-radius: 5px;
+  width: 400px;
+  margin: 50px auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+form {
+  align-items: center;
+  width: 400px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 95%;
+}
+
+.form-group.last {
+  margin-bottom: 3px;
+}
+
+label {
+  display: block;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"] {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  background-color: var(--bg3-color);
+  color: var(--text-color);
+  border-radius: 3px;
+}
+
+.btn-auth {
+  background-color: var(--bg3-color);
+  color: white;
+  padding: 8px 16px;
+  border: 1px solid var(--bg2-color);
+  border-radius: 5px;
+  cursor: pointer;
+  margin: 0px auto;
+  font-size: 20px;
+  align-self: center;
+  width: 100%;
+  height: 45px;
+}
+
+.btn-auth:hover {
+  background-color: var(--bg1-color);
+  border: 1px solid var(--text-color);
+}
+
+a {
+  color: var(--main-color);
+}

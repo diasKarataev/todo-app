@@ -73,21 +73,13 @@ button:hover {
   border: 1px solid var(--text-color);
 }
 
-button.cancel-btn {
-  background-color: #b2b2b2;
-}
-
-button.cancel-btn:hover {
-  background-color: #949292;
-}
-
 ul {
   list-style-type: none;
   padding: 0;
 }
 
 li {
-  background-color: var(--bg2-color);
+  background-color: var(--bg3-color);
   margin-bottom: 10px;
   padding: 2px 20px;
   border-radius: 5px;
