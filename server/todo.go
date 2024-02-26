@@ -1,27 +1,37 @@
 package main
 
 import (
+	"fmt"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
+	"github.com/joho/godotenv"
+	"github.com/jordan-wright/email"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/time/rate"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 	"net/http"
+	"net/smtp"
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
-var limiter = rate.NewLimiter(10, 1) // Rate limit of 1 request
+var (
+	limiter        = rate.NewLimiter(10, 1) // Rate limit of 1 request
+	db             *gorm.DB
+	log            *logrus.Logger
+	jwtSecret      = []byte(os.Getenv("JWT_SECRET"))
+	tokenExpiresIn = time.Hour * 24
+)
 
 const (
 	dsn = "host=localhost user=postgres password=Infinitive dbname=go-todo-app port=5432 sslmode=disable"
 )
-
-var db *gorm.DB
-var log *logrus.Logger
 
 type Task struct {
 	ID          uint      `gorm:"primaryKey"`
@@ -30,6 +40,32 @@ type Task struct {
 	CreatedDate time.Time `json:"createdDate"`
 	HaveStar    bool      `json:"star" gorm:"default:false"`
 	LastUpdated time.Time `json:"lastUpdated" gorm:"column:lastupdated"`
+}
+
+type User struct {
+	ID             uint   `gorm:"primaryKey"`
+	Username       string `gorm:"uniqueIndex"`
+	Email          string `gorm:"uniqueIndex"`
+	Password       string
+	IsActivated    bool   `json:"isActivated"`
+	ActivationLink string `json:"activationLink"`
+}
+
+type Claims struct {
+	Username    string `json:"username"`
+	IsActivated bool   `json:"isActivated"`
+	Email       string `json:"email"`
+	UserId      uint   `json:"userId"`
+	jwt.StandardClaims
+}
+
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type TokenResponse struct {
+	Token string `json:"token"`
 }
 
 func (t *Task) ToggleHaveStar() {
@@ -48,6 +84,11 @@ func main() {
 	log = logrus.New()
 	var err error
 	log.SetFormatter(&logrus.JSONFormatter{})
+
+	err = godotenv.Load(".env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 
 	file, err := os.OpenFile("logfile.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err == nil {
@@ -68,22 +109,224 @@ func main() {
 		log.Fatal(err)
 	}
 	db.AutoMigrate(&Task{})
+	db.AutoMigrate(&User{})
 
 	r := gin.Default()
 
+	// CORS middleware
 	config := cors.DefaultConfig()
 	config.AllowOrigins = []string{"http://localhost:3000"}
 	r.Use(cors.New(config))
 
-	r.GET("/tasks", GetTasks)
-	r.GET("/tasks/:id", GetTask)
-	r.POST("/tasks", CreateTask)
-	r.PUT("/tasks/:id", UpdateTask)
-	r.DELETE("/tasks/:id", DeleteTask)
-	r.PATCH("/tasks/:id/toggle-star", ToggleStarTask)
+	// Public routes
+	r.POST("/register", Register)
+	r.POST("/login", Login)
+	r.GET("/activate/:activationLink", Activate)
 
+	// Auth middleware
+	auth := r.Group("/api")
+	auth.Use(AuthMiddleware())
+	{
+		r.GET("/resend-activation-link", ResendActivationLink)
+		auth.GET("/user-info", UserInfo)
+		auth.GET("/tasks", GetTasks)
+		auth.GET("/tasks/:id", GetTask)
+		auth.POST("/tasks", CreateTask)
+		auth.PUT("/tasks/:id", UpdateTask)
+		auth.DELETE("/tasks/:id", DeleteTask)
+		auth.PATCH("/tasks/:id/toggle-star", ToggleStarTask)
+	}
+
+	// Start server
 	log.Println("Сервер запущен на порту :8000")
 	log.Fatal(http.ListenAndServe(":8000", r))
+}
+
+func Register(c *gin.Context) {
+	var user User
+	if err := c.ShouldBindJSON(&user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	if user.Username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username is required"})
+		return
+	}
+
+	var existingEmailUser User
+	if err := db.Where("email = ?", user.Email).First(&existingEmailUser).Error; err == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Email already exists"})
+		return
+	}
+
+	// Проверка наличия username в базе данных
+	var existingUsernameUser User
+	if err := db.Where("username = ?", user.Username).First(&existingUsernameUser).Error; err == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+	user.ActivationLink = uuid.New().String()
+	user.IsActivated = false
+	user.Password = string(hashedPassword)
+	if err := db.Create(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		return
+	}
+
+	if err := SendActivationEmail(user.Email, user.ActivationLink); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send activation email"})
+		return
+	}
+
+	c.Status(http.StatusCreated)
+}
+
+func SendActivationEmail(to, activationLink string) error {
+	from := "karataev020902@gmail.com"
+	pass := os.Getenv("SMTP_KEY")
+
+	e := email.NewEmail()
+	e.From = from
+	e.To = []string{to}
+	e.Subject = "Activate your account"
+	e.HTML = []byte(fmt.Sprintf("Click <a href=\"%s/activate/%s\">here</a> to activate your account", os.Getenv("API_URL"), activationLink))
+
+	return e.Send("smtp.gmail.com:587", smtp.PlainAuth("", from, pass, "smtp.gmail.com"))
+}
+
+func ResendActivationLink(c *gin.Context) {
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
+		return
+	}
+	tokenString := authHeader[len("Bearer "):]
+
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+	if err != nil || !token.Valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	userId := claims.UserId
+	if userId == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "UserId is required"})
+		return
+	}
+
+	var user User
+	if err := db.Where("id = ?", userId).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	newActivationLink := uuid.New().String()
+
+	user.ActivationLink = newActivationLink
+	if err := db.Save(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update ActivationLink"})
+		return
+	}
+
+	if err := SendActivationEmail(user.Email, user.ActivationLink); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send activation email"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Activation link resent successfully"})
+}
+
+func Login(c *gin.Context) {
+	var loginRequest LoginRequest
+	if err := c.ShouldBindJSON(&loginRequest); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	var user User
+	if err := db.Where("email = ?", loginRequest.Email).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginRequest.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	token, err := GenerateToken(user.ID, user.Username, user.Email, user.IsActivated)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, TokenResponse{Token: token})
+}
+
+func Activate(c *gin.Context) {
+	activationLink := c.Param("activationLink")
+
+	var user User
+	if err := db.Where("activation_link = ?", activationLink).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Activation link not found"})
+		return
+	}
+
+	user.IsActivated = true
+	if err := db.Save(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to activate user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User activated successfully"})
+}
+
+func GenerateToken(userId uint, username, email string, isActivated bool) (string, error) {
+	expirationTime := time.Now().Add(tokenExpiresIn)
+	claims := &Claims{
+		UserId:      userId,
+		Username:    username,
+		IsActivated: isActivated,
+		Email:       email,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(jwtSecret)
+}
+
+func AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
+			return
+		}
+
+		tokenString := authHeader[len("Bearer "):]
+		claims := &Claims{}
+
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			return jwtSecret, nil
+		})
+		if err != nil || !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		c.Next()
+	}
 }
 
 func GetTasks(c *gin.Context) {
@@ -133,7 +376,6 @@ func GetTasks(c *gin.Context) {
 		"page":       page,
 		"pageSize":   pageSize,
 		"nameFilter": nameFilter,
-		// ... (добавьте другие поля лога по вашему усмотрению)
 	}).Info("GetTasks executed successfully")
 
 	c.JSON(http.StatusOK, tasks)
@@ -157,6 +399,33 @@ func GetTask(c *gin.Context) {
 	}).Info("GetTask executed successfully")
 
 	c.JSON(http.StatusOK, task)
+}
+
+func UserInfo(c *gin.Context) {
+	// Получаем токен из заголовка Authorization
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
+		return
+	}
+	tokenString := authHeader[len("Bearer "):]
+
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+	if err != nil || !token.Valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	userInfo := gin.H{
+		"userId":      claims.UserId,
+		"username":    claims.Username,
+		"email":       claims.Email,
+		"isActivated": claims.IsActivated,
+	}
+	c.JSON(http.StatusOK, userInfo)
 }
 
 func CreateTask(c *gin.Context) {
