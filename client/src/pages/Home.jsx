@@ -37,7 +37,7 @@ const Home = () => {
 
   const fetchUserInfo = async () => {
     try {
-      const response = await axios.get('http://103.13.211.78:8000/api/user-info', {
+      const response = await axios.get('http://localhost:8000/api/user-info', {
         headers: {
           Authorization: `Bearer ${getToken()}`,
         },
@@ -50,7 +50,7 @@ const Home = () => {
 
   const fetchTasks = async () => {
     try {
-      const response = await axios.get('http://103.13.211.78:8000/api/tasks', {
+      const response = await axios.get('http://localhost:8000/api/tasks', {
         params: {
           page: pagination.page,
           pageSize: pagination.pageSize,
@@ -104,7 +104,7 @@ const Home = () => {
 
   const handleUpdate = async () => {
     try {
-      const response = await axios.put(`http://103.13.211.78:8000/api/tasks/${editingTask.ID}`, editingTask, {
+      const response = await axios.put(`http://localhost:8000/api/tasks/${editingTask.ID}`, editingTask, {
         headers: {
           Authorization: `Bearer ${getToken()}`,
           'Content-Type': 'application/json',
@@ -122,7 +122,7 @@ const Home = () => {
     event.preventDefault();
 
     try {
-      const response = await axios.post('http://103.13.211.78:8000/api/tasks', newTask, {
+      const response = await axios.post('http://localhost:8000/api/tasks', newTask, {
         headers: {
           Authorization: `Bearer ${getToken()}`, // Добавление токена к заголовкам запроса
           'Content-Type': 'application/json', // Указание типа содержимого для запроса
@@ -146,7 +146,7 @@ const Home = () => {
 
   const handleToggleStar = async (taskId) => {
     try {
-      const response = await axios.put(`http://103.13.211.78:8000/api/tasks/${taskId}/toggle-star`, null, {
+      const response = await axios.put(`http://localhost:8000/api/tasks/${taskId}/toggle-star`, null, {
         headers: {
           Authorization: `Bearer ${getToken()}`, // Добавление токена к заголовкам запроса
           'Content-Type': 'application/json', // Указание типа содержимого для запроса
@@ -171,7 +171,7 @@ const Home = () => {
 
   const handleDelete = async (taskId) => {
     try {
-      await axios.delete(`http://103.13.211.78:8000/api/tasks/${taskId}`, {
+      await axios.delete(`http://localhost:8000/api/tasks/${taskId}`, {
         headers: {
           Authorization: `Bearer ${getToken()}`, // Добавление токена к заголовкам запроса
         },
