@@ -333,7 +333,7 @@ func CreateAdminUser() error {
 
 	admin = User{
 		Username:       "admin",
-		Email:          "admin",
+		Email:          "admin@admin.com",
 		Password:       string(hashedPassword),
 		IsActivated:    true,
 		ActivationLink: "",
