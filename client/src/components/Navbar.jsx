@@ -14,7 +14,7 @@ const Navbar = () => {
 
     const fetchUserInfo = async (token) => {
         try {
-            const response = await fetch("http://localhost:8000/api/user-info", {
+            const response = await fetch("http://103.13.211.78:8000/api/user-info", {
                 headers: {
                     Authorization: `Bearer ${token}`
                 }
@@ -34,7 +34,7 @@ const Navbar = () => {
     const handleResendActivation = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch("http://localhost:8000/resend-activation-link", {
+            const response = await fetch("http://103.13.211.78:8000/resend-activation-link", {
                 method: "GET",
                 headers: {
                     Authorization: `Bearer ${token}`

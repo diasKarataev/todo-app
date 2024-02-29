@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-contrib/cors"
@@ -50,6 +51,7 @@ type User struct {
 	Password       string
 	IsActivated    bool   `json:"isActivated"`
 	ActivationLink string `json:"activationLink"`
+	ROLE           string `json:"-"`
 }
 
 type Claims struct {
@@ -57,6 +59,7 @@ type Claims struct {
 	IsActivated bool   `json:"isActivated"`
 	Email       string `json:"email"`
 	UserId      uint   `json:"userId"`
+	ROLE        string `json:"role"`
 	jwt.StandardClaims
 }
 
@@ -112,6 +115,10 @@ func main() {
 	db.AutoMigrate(&Task{})
 	db.AutoMigrate(&User{})
 
+	if err := CreateAdminUser(); err != nil {
+		log.Fatal("Failed to create admin user:", err)
+	}
+
 	r := gin.Default()
 
 	// CORS middleware
@@ -138,11 +145,40 @@ func main() {
 		auth.PUT("/tasks/:id", UpdateTask)
 		auth.DELETE("/tasks/:id", DeleteTask)
 		auth.PUT("/tasks/:id/toggle-star", ToggleStarTask)
+
+	}
+
+	auth.Use(AdminAuthMiddleware())
+	{
+		auth.GET("/admin/users", GetAllUsers)
+		auth.POST("/admin/mailing", SendEmailToAllUsers)
 	}
 
 	// Start server
 	log.Println("Сервер запущен на порту :8000")
 	log.Fatal(http.ListenAndServe(":8000", r))
+}
+
+func GetAllUsers(c *gin.Context) {
+	var users []User
+	if err := db.Find(&users).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
+		return
+	}
+
+	var usersResponse []gin.H
+	for _, user := range users {
+		userResponse := gin.H{
+			"ID":          user.ID,
+			"Username":    user.Username,
+			"Email":       user.Email,
+			"IsActivated": user.IsActivated,
+			"ROLE":        user.ROLE,
+		}
+		usersResponse = append(usersResponse, userResponse)
+	}
+
+	c.JSON(http.StatusOK, usersResponse)
 }
 
 func Register(c *gin.Context) {
@@ -177,6 +213,7 @@ func Register(c *gin.Context) {
 	}
 	user.ActivationLink = uuid.New().String()
 	user.IsActivated = false
+	user.ROLE = "USER"
 	user.Password = string(hashedPassword)
 	if err := db.Create(&user).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
@@ -267,7 +304,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	token, err := GenerateToken(user.ID, user.Username, user.Email, user.IsActivated)
+	token, err := GenerateToken(user.ID, user.Username, user.Email, user.IsActivated, user.ROLE)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -276,6 +313,39 @@ func Login(c *gin.Context) {
 	c.JSON(http.StatusOK, TokenResponse{Token: token})
 }
 
+func CreateAdminUser() error {
+	var admin User
+	result := db.First(&admin, "role = ?", "ADMIN")
+	if result.Error == nil {
+		// Пользователь admin уже существует
+		return nil
+	}
+	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		// Произошла ошибка при поиске пользователя
+		return result.Error
+	}
+
+	// Создание пользователя admin
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	admin = User{
+		Username:       "admin",
+		Email:          "admin",
+		Password:       string(hashedPassword),
+		IsActivated:    true,
+		ActivationLink: "",
+		ROLE:           "ADMIN",
+	}
+
+	if err := db.Create(&admin).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
 func Activate(c *gin.Context) {
 	activationLink := c.Param("activationLink")
 
@@ -294,13 +364,14 @@ func Activate(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "User activated successfully"})
 }
 
-func GenerateToken(userId uint, username, email string, isActivated bool) (string, error) {
+func GenerateToken(userId uint, username, email string, isActivated bool, role string) (string, error) {
 	expirationTime := time.Now().Add(tokenExpiresIn)
 	claims := &Claims{
 		UserId:      userId,
 		Username:    username,
 		IsActivated: isActivated,
 		Email:       email,
+		ROLE:        role,
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: expirationTime.Unix(),
 		},
@@ -325,6 +396,35 @@ func AuthMiddleware() gin.HandlerFunc {
 		})
 		if err != nil || !token.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		c.Next()
+	}
+}
+
+func AdminAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
+			return
+		}
+
+		tokenString := authHeader[len("Bearer "):]
+		claims := &Claims{}
+
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			return jwtSecret, nil
+		})
+		if err != nil || !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		// Проверка роли пользователя
+		if claims.ROLE != "ADMIN" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Insufficient permissions"})
 			return
 		}
 
@@ -421,6 +521,45 @@ func GetTask(c *gin.Context) {
 	c.JSON(http.StatusOK, task)
 }
 
+func SendEmailToAllUsers(c *gin.Context) {
+	var request struct {
+		Subject string `json:"subject"`
+		Body    string `json:"body"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	var users []User
+	if err := db.Find(&users).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
+		return
+	}
+
+	for _, user := range users {
+		if err := SendEmail(user.Email, request.Subject, request.Body); err != nil {
+			continue
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Email sent to all users successfully"})
+}
+
+func SendEmail(to, subject, body string) error {
+	from := "karataev020902@gmail.com"
+	pass := os.Getenv("SMTP_KEY")
+
+	e := email.NewEmail()
+	e.From = from
+	e.To = []string{to}
+	e.Subject = subject
+	e.HTML = []byte(body)
+
+	return e.Send("smtp.gmail.com:587", smtp.PlainAuth("", from, pass, "smtp.gmail.com"))
+}
+
 func UserInfo(c *gin.Context) {
 	// Получаем токен из заголовка Authorization
 	authHeader := c.GetHeader("Authorization")
@@ -444,6 +583,7 @@ func UserInfo(c *gin.Context) {
 		"username":    claims.Username,
 		"email":       claims.Email,
 		"isActivated": claims.IsActivated,
+		"ROLE":        claims.ROLE,
 	}
 	c.JSON(http.StatusOK, userInfo)
 }
